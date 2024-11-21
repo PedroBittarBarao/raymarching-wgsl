@@ -51,6 +51,18 @@ fn op_smooth_intersection(d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) ->
 }
 
 fn op(op: f32, d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
+// Performs a combination operation on two distances and their corresponding colors.
+// 
+// # Parameters
+// - `op`: The operation type (e.g., union, intersection, difference).
+// - `d1`: The first distance value.
+// - `d2`: The second distance value.
+// - `col1`: The color associated with the first distance.
+// - `col2`: The color associated with the second distance.
+// - `k`: A blending factor or smoothing parameter.
+//
+// # Returns
+// A `vec4f` containing the resulting distance and blended color.
 {
   // union
   if (op < 1.0)
@@ -70,7 +82,7 @@ fn op(op: f32, d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
 
 fn repeat(p: vec3f, offset: vec3f) -> vec3f
 {
-  return vec3f(0.0);
+  return modc(p,offset);
 }
 
 fn transform_p(p: vec3f, option: vec2f) -> vec3f
@@ -87,6 +99,10 @@ fn transform_p(p: vec3f, option: vec2f) -> vec3f
 
 fn scene(p: vec3f) -> vec4f // xyz = color, w = distance
 {
+// This function represents the scene in a raymarching shader.
+// It takes a 3D position vector `p` as input and returns a 4D vector.
+// The returned vector contains the RGB color values in the xyz components
+// and the distance to the nearest surface in the w component.
     var d = mix(100.0, p.y, uniforms[17]);
 
     var spheresCount = i32(uniforms[2]);
@@ -106,18 +122,46 @@ fn scene(p: vec3f) -> vec4f // xyz = color, w = distance
 
       // call transform_p and the sdf for the shape
       // call op function with the shape operation
+      var shape = shapesb[i];
+      var shape_info = shapesinfob[i];
 
       // op format:
       // x: operation (0: union, 1: subtraction, 2: intersection)
       // y: k value
       // z: repeat mode (0: normal, 1: repeat)
       // w: repeat offset
+      var p_t = transform_p(p, vec2f(shape.op.z, shape.op.w));
+      var d : f32;
+      
+      if (shape_info.x == 0)
+      {
+        d = sdf_sphere(p_t, shape.radius, shape.quat);
+      }
+      else if (shape_info.x == 1)
+      {
+        d = sdf_round_box(p_t, shape.radius.xyz,shape.radius.w, shape.quat);
+      }
+      else if (shape_info.x == 2)
+      {
+        d = sdf_torus(p_t, shape.radius.xy, shape.quat);
+      }
+      
+      result = op(shape.op.x, result.w, d, result.xyz, shape.color.xyz, shape.op.y);
+      
     }
 
     return result;
 }
 
 fn march(ro: vec3f, rd: vec3f) -> march_output
+// Function to perform ray marching
+// 
+// Parameters:
+// - ro: vec3f - The origin of the ray in 3D space
+// - rd: vec3f - The direction of the ray in 3D space
+// 
+// Returns:
+// - march_output - The result of the ray marching process
 {
   var max_marching_steps = i32(uniforms[5]);
   var EPSILON = uniforms[23];
@@ -125,12 +169,24 @@ fn march(ro: vec3f, rd: vec3f) -> march_output
   var depth = 0.0;
   var color = vec3f(0.0);
   var march_step = uniforms[22];
+  var march_offset = uniforms[21];
+  var ray_pos = ro;
   
   for (var i = 0; i < max_marching_steps; i = i + 1)
   {
+
       // raymarch algorithm
       // call scene function and march
+      var march_result: vec4f = scene(ray_pos); // xyz = color, w = distance
+      depth = march_result.w;
       // if the depth is greater than the max distance or the distance is less than the epsilon, break
+      if (depth > MAX_DIST || depth < EPSILON)
+      {
+        color = vec3f(1.0);
+        break;
+      }
+      ray_pos = ro + rd * depth;
+      depth += march_offset;
   }
 
   return march_output(color, depth, false);
@@ -138,7 +194,12 @@ fn march(ro: vec3f, rd: vec3f) -> march_output
 
 fn get_normal(p: vec3f) -> vec3f
 {
-  return vec3f(0.0);
+  var eps = uniforms[24];
+  var n = vec3f(0.0);
+  n.x = scene(p + vec3f(eps, 0.0, 0.0)).w - scene(p - vec3f(eps, 0.0, 0.0)).w;
+  n.y = scene(p + vec3f(0.0, eps, 0.0)).w - scene(p - vec3f(0.0, eps, 0.0)).w;
+  n.z = scene(p + vec3f(0.0, 0.0, eps)).w - scene(p - vec3f(0.0, 0.0, eps)).w;
+  return normalize(n);
 }
 
 // https://iquilezles.org/articles/rmshadows/
@@ -178,8 +239,16 @@ fn get_ambient_light(light_pos: vec3f, sun_color: vec3f, rd: vec3f) -> vec3f
 
   return ambient;
 }
-
 fn get_light(current: vec3f, obj_color: vec3f, rd: vec3f) -> vec3f
+// Computes the lighting at a given point in the scene.
+// 
+// Parameters:
+// - current: The current position in the scene as a 3D vector.
+// - obj_color: The color of the object at the current position as a 3D vector.
+// - rd: The ray direction as a 3D vector.
+// 
+// Returns:
+// - A 3D vector representing the computed light color at the given point.
 {
   var light_position = vec3f(uniforms[13], uniforms[14], uniforms[15]);
   var sun_color = int_to_rgb(i32(uniforms[16]));
@@ -193,13 +262,16 @@ fn get_light(current: vec3f, obj_color: vec3f, rd: vec3f) -> vec3f
     return ambient;
   }
 
+  var light_direction = normalize(light_position - current);
+  var col = saturate(dot(normal, light_direction));
+
   // calculate the light intensity
   // Use:
   // - shadow
   // - ambient occlusion (optional)
   // - ambient light
   // - object color
-  return ambient;
+  return ambient + col;
 }
 
 fn set_camera(ro: vec3f, ta: vec3f, cr: f32) -> mat3x3<f32>
@@ -256,7 +328,8 @@ fn render(@builtin(global_invocation_id) id : vec3u)
   // call march function and get the color/depth
   // move ray based on the depth
   // get light
-  var color = vec3f(1.0);
+  var march_result: march_output = march(ro, rd);
+  var color = march_result.color;
   
   // display the result
   color = linear_to_gamma(color);

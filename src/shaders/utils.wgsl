@@ -68,11 +68,28 @@ fn quaternion_from_euler(euler: vec3f) -> vec4f
 }
 
 fn modc(a: vec3f, b: vec3f) -> vec3f
+// Computes the component-wise modulus of two vectors.
+// 
+// Parameters:
+// - a: The first input vector of type vec3f.
+// - b: The second input vector of type vec3f.
+//
+// Returns:
+// - A vec3f where each component is the result of the modulus operation
+//   between the corresponding components of vectors a and b.
 {
   return a - b * floor(a / b);
 }
 
 fn qmul(q1: vec4f, q2: vec4f) -> vec4f
+// Multiplies two quaternions.
+// 
+// Parameters:
+// - q1: The first quaternion as a vec4f.
+// - q2: The second quaternion as a vec4f.
+//
+// Returns:
+// - A vec4f representing the product of the two quaternions.
 {
   return vec4f(
     q2.xyz * q1.w + q1.xyz * q2.w + cross(q1.xyz, q2.xyz),
@@ -91,6 +108,14 @@ fn q_inverse(q: vec4f) -> vec4f
 }
 
 fn rotate_vector(v: vec3f, r: vec4f) -> vec3f
+// Rotates a 3D vector by a quaternion.
+// 
+// # Parameters
+// - `v`: The vector to be rotated (vec3f).
+// - `r`: The quaternion representing the rotation (vec4f).
+// 
+// # Returns
+// - `vec3f`: The rotated vector.
 {
   var r_c = r * vec4f(-1.0, -1.0, -1.0, 1.0);
   return qmul(r, qmul(vec4f(v, 0.0), r_c)).xyz;
