@@ -7,8 +7,7 @@ fn sdf_round_box(p: vec3f, b: vec3f, r: f32, quat: vec4f) -> f32
 
 fn sdf_sphere(p: vec3f, r: vec4f, quat: vec4f) -> f32
 {
-  var p_rotated = rotate_vector(p,quat);
-  p_rotated = p_rotated - r.xyz;
+  let p_rotated = rotate_vector(p,quat);
   return length(p_rotated) - r.w;
 }
 
