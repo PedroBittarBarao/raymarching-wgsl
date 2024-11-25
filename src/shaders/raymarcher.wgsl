@@ -128,8 +128,8 @@ fn scene(p: vec3f) -> vec4f // xyz = color, w = distance
       // shapesinfo has the following format:
       // x: shape type (0: sphere, 1: box, 2: torus)
       // y: shape index
-      let quat = quaternion_from_euler(shape.rotation.xyz + animate(shape.animate_rotation.xyz, animate_rotation.xyz, animate_rotation.w, uniforms[0]));
-      let p = p - shape.transform.xyz + animate(shape.transform_animated.xyz, animate_transform.xyz, animate_transform.w, uniforms[0]);
+      let quat = shape.quat;
+      let p = p - shape.transform_animated.xyz;
 
       if ( shape_type > 1.0) // torus
       { 
@@ -316,7 +316,7 @@ fn set_camera(ro: vec3f, ta: vec3f, cr: f32) -> mat3x3<f32>
 
 
 fn animate(val: vec3f, amplitude: vec3f, speed: f32, time: f32) -> vec3f {
-    return val + amplitude * (sin(speed * time));
+    return val + amplitude * sin(speed * time);
 }
 
 @compute @workgroup_size(THREAD_COUNT, 1, 1)
@@ -332,6 +332,25 @@ fn preprocess(@builtin(global_invocation_id) id : vec3u)
   {
     return;
   }
+
+  let idx = i32(id.x);
+  var shape = shapesb[idx];
+  var animated_position = animate(
+      shape.transform.xyz,
+      shape.animate_transform.xyz,
+      shape.animate_transform.w,
+      time
+  );
+  shapesb[idx].transform_animated = vec4f(animated_position, shape.transform.w);
+
+  // Animate rotation
+  var animated_rotation = animate(
+      shape.rotation.xyz,
+      shape.animate_rotation.xyz,
+      shape.animate_rotation.w,
+      time
+  );
+  shapesb[idx].quat = quaternion_from_euler(animated_rotation);
 
   // optional: performance boost
   // Do all the transformations here and store them in the buffer since this is called only once per object and not per pixel
