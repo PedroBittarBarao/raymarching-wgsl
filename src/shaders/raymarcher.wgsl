@@ -58,18 +58,7 @@ fn op_smooth_intersection(d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) ->
 }
 
 fn op(op: f32, d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
-// Performs a combination operation on two distances and their corresponding colors.
-// 
-// # Parameters
-// - `op`: The operation type (e.g., union, intersection, difference).
-// - `d1`: The first distance value.
-// - `d2`: The second distance value.
-// - `col1`: The color associated with the first distance.
-// - `col2`: The color associated with the second distance.
-// - `k`: A blending factor or smoothing parameter.
-//
-// # Returns
-// A `vec4f` containing the resulting distance and blended color.
+
 {
   // union
   if (op < 1.0)
@@ -151,22 +140,26 @@ fn scene(p: vec3f) -> vec4f // xyz = color, w = distance
         result = res; // assign color and distance 
       }
 
+
+      let op_type = shape.op.x;
+      let k = shape.op.y;
+      let d1 = d;
+      let d2 = result.w;
+
+      let c1 = shape.color.xyz;
+      let c2 = result.xyz;
       
-      // order matters for the operations, they're sorted on the CPU side
+      let op_res = op(op_type,d1,d2,c1,c2,k);
 
-      // call transform_p and the sdf for the shape
-      // call op function with the shape operation
+      let op_col = op_res.xyz;
+      let op_d = op_res.w;
 
-      // op format:
-      // x: operation (0: union, 1: subtraction, 2: intersection)
-      var op_type = shape.op.x;
-      var op_k = shape.op.y;
-      var rep = shape.op.z;
-      var rep_offset = shape.op.w;
+      if (op_d < result.w) // return smallest distance
+      {
+        let res = vec4f(op_col,op_d);
+        result = res; // assign color and distance 
+      }
 
-      // y: k value
-      // z: repeat mode (0: normal, 1: repeat)
-      // w: repeat offset
     }
 
     return result;
