@@ -35,9 +35,9 @@ struct march_output {
 fn op_smooth_union(d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
 {
   var h = clamp(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0);
-  var d = mix(d2, d1, h) - k * h * (1.0 - h);
-  var col = mix(col2, col1, h);
-  return vec4f(col, d);
+    var d = mix(d2, d1, h) - k * h * (1.0 - h);
+    var col = mix(col2, col1, h);
+    return vec4f(col, d);
 }
 
 fn op_smooth_subtraction(d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
@@ -58,7 +58,6 @@ fn op_smooth_intersection(d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) ->
 }
 
 fn op(op: f32, d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
-
 {
   // union
   if (op < 1.0)
@@ -69,7 +68,7 @@ fn op(op: f32, d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
   // subtraction
   if (op < 2.0)
   {
-    return op_smooth_subtraction(d2, d1, col2, col1, k);
+    return op_smooth_subtraction(d1, d2, col1, col2, k);
   }
 
   // intersection
@@ -78,7 +77,7 @@ fn op(op: f32, d1: f32, d2: f32, col1: vec3f, col2: vec3f, k: f32) -> vec4f
 
 fn repeat(p: vec3f, offset: vec3f) -> vec3f
 {
-  return modc(p,offset);
+  return modc(p+offset*0.5,offset)-offset*0.5;
 }
 
 fn transform_p(p: vec3f, option: vec2f) -> vec3f
@@ -95,6 +94,9 @@ fn transform_p(p: vec3f, option: vec2f) -> vec3f
 
 fn scene(p: vec3f) -> vec4f // xyz = color, w = distance
 {
+
+    var mandelbulb = uniforms[18];
+    var weird_thing = uniforms[19];
     var d = mix(100.0, p.y, uniforms[17]);
 
     var spheresCount = i32(uniforms[2]);
@@ -104,64 +106,49 @@ fn scene(p: vec3f) -> vec4f // xyz = color, w = distance
     var all_objects_count = spheresCount + boxesCount + torusCount;
     var result = vec4f(vec3f(1.0), d);
 
-    for (var i = 0; i < all_objects_count; i = i + 1)
-    {
-      // get shape and shape order (shapesinfo)
-      var shape_info = shapesinfob[i];
-      let shape_index = i32(shape_info.y);
-      let shape_type = shape_info.x; 
-      var shape = shapesb[shape_index];
-      let animate_transform = shape.animate_transform;
-      let animate_rotation = shape.animate_rotation;
-
-      // shapesinfo has the following format:
-      // x: shape type (0: sphere, 1: box, 2: torus)
-      // y: shape index
-      let quat = shape.quat;
-      let p = p - shape.transform_animated.xyz;
-
-      if ( shape_type > 1.0) // torus
-      { 
-        d = sdf_torus(p,shape.radius.xy,quat); 
-      }
-      else if (shape_type > 0.0)// box
+    var c1 : vec3f;
+    var c2 : vec3f;
+    var count = 0;
+    if (all_objects_count > 0){
+      for (var i = 0; i < all_objects_count; i = i + 1)
       {
-        d = sdf_round_box(p, shape.radius.xyz, shape.radius.w, quat);
-      } 
-      else  // sphere
-      {
-        d = sdf_sphere(p,shape.radius,quat);
+        // get shape and shape order (shapesinfo)
+        var info_shape = shapesinfob[i];
+        let index_shape = i32(info_shape.y);
+        let stype_shape = info_shape.x; 
+        var shape = shapesb[index_shape];
+        // shapesinfo has the following format:
+        // x: shape type (0: sphere, 1: box, 2: torus)
+        // y: shape index
+        let quat_ =  shape.quat;
+
+        let p_local = transform_p( p - shape.transform_animated.xyz,shape.op.zw);
+
+        if ( stype_shape > 1.0 ) // torus
+        { 
+          d = sdf_torus(p_local,shape.radius.xy,quat_); 
+        }
+        else if (stype_shape > 0.0)// box
+        {
+          d = sdf_round_box(p_local, shape.radius.xyz, shape.radius.w, quat_);
+        } 
+        else  // sphere
+        {
+          d = sdf_sphere(p_local,shape.radius,quat_);
+        }
+
+        let op_type = shape.op.x;
+        let k = shape.op.y;
+        let d1 = d;
+        let d2 = result.w;
+
+        let c1 = shape.color.xyz;
+        let c2 = result.xyz;
+        
+        result = op(op_type,d1,d2,c1,c2,k);
       }
-      
-      if (d < result.w) // if closest object 
-      {
-        result.w = d; // assign closest distance
-        let res = vec4f(shape.color.xyz,d);
-        result = res; // assign color and distance 
-      }
-
-
-      let op_type = shape.op.x;
-      let k = shape.op.y;
-      let d1 = d;
-      let d2 = result.w;
-
-      let c1 = shape.color.xyz;
-      let c2 = result.xyz;
-      
-      let op_res = op(op_type,d1,d2,c1,c2,k);
-
-      let op_col = op_res.xyz;
-      let op_d = op_res.w;
-
-      if (op_d < result.w) // return smallest distance
-      {
-        let res = vec4f(op_col,op_d);
-        result = res; // assign color and distance 
-      }
-
     }
-
+    
     return result;
 }
 
